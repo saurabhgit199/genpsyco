@@ -3,9 +3,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
 from app.routers import auth, therapy, audio
 from app.routers import chat as chat_router
+import logging
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
+logger = logging.getLogger(__name__)
+
+# Create database tables (with error handling)
+try:
+    Base.metadata.create_all(bind=engine)
+    logger.info("Database tables created successfully")
+except Exception as e:
+    logger.error(f"Failed to create database tables: {e}")
+    # Don't crash the app, but log the error
 
 app = FastAPI(title="Mental Health Audio Therapy API", version="1.0.0")
 
