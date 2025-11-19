@@ -1,6 +1,6 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-sqlalchemy==2.0.23
+sqlalchemy>=2.0.36
 pydantic==2.10.4
 email-validator==2.1.0.post1
 pydantic-settings==2.2.1
