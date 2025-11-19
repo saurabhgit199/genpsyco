@@ -1,0 +1,264 @@
+from datetime import datetime
+from typing import List, Literal
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session, joinedload
+import logging
+from app.database import get_db
+from app import models, schemas
+from app.auth import get_current_user, get_current_psychologist
+from app.services.elevenlabs_service import elevenlabs_service, ElevenLabsPaymentIssueError
+from app.services.google_gemini_service import google_gemini_service
+import os
+from pydantic import BaseModel
+
+router = APIRouter()
+
+AUDIO_DIR = "audio_files"
+os.makedirs(AUDIO_DIR, exist_ok=True)
+logger = logging.getLogger(__name__)
+
+class GenerateAudioRequest(BaseModel):
+    voice_id: str | None = None
+    provider: Literal["elevenlabs", "google"] = "elevenlabs"
+    instruction: str | None = None
+
+@router.get("/voices")
+def list_voices(
+    provider: Literal["elevenlabs", "google"] = "elevenlabs",
+    current_user: models.User = Depends(get_current_user)
+):
+    """List available ElevenLabs voices with preview urls for selection"""
+    try:
+        if provider == "google":
+            voices = google_gemini_service.list_voices()
+        else:
+            voices = elevenlabs_service.list_voices()
+        return {"voices": voices}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to fetch voices: {str(e)}"
+        )
+
+@router.post("/generate/{session_id}")
+def generate_audio(
+    session_id: int,
+    current_user: models.User = Depends(get_current_psychologist),
+    db: Session = Depends(get_db),
+    body: GenerateAudioRequest | None = None
+):
+    """Generate audio from approved therapy text"""
+    session = db.query(models.TherapySession).filter(
+        models.TherapySession.id == session_id
+    ).first()
+    
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Therapy session not found"
+        )
+    
+    if session.status not in (models.TherapyStatus.APPROVED, models.TherapyStatus.AUDIO_GENERATED):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Session must be approved before generating audio"
+        )
+    
+    if not session.approved_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No approved text available for audio generation"
+        )
+    
+    provider = body.provider if body else "elevenlabs"
+    voice_id = body.voice_id if body else None
+    instruction = body.instruction if body else None
+    extension = ".wav" if provider == "google" else ".mp3"
+    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    audio_filename = f"therapy_session_{session_id}_{timestamp}{extension}"
+    audio_path = os.path.join(AUDIO_DIR, audio_filename)
+
+    try:
+        if provider == "google":
+            google_gemini_service.text_to_speech(session.approved_text, audio_path, voice_id=voice_id, instruction=instruction)
+        else:
+            elevenlabs_service.text_to_speech(session.approved_text, audio_path, voice_id=voice_id)
+        
+        history_entry = models.AudioHistory(
+            session_id=session.id,
+            provider=provider,
+            voice_id=voice_id,
+            instruction=instruction,
+            file_path=audio_path,
+            created_by=current_user.id,
+        )
+        db.add(history_entry)
+
+        session.audio_file_path = audio_path
+        session.status = models.TherapyStatus.AUDIO_GENERATED
+
+        db.commit()
+        db.refresh(history_entry)
+
+        return {
+            "message": "Audio generated successfully",
+            "audio_path": audio_path,
+            "session_id": session_id,
+            "history_id": history_entry.id,
+        }
+    except ElevenLabsPaymentIssueError as e:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Audio generation unavailable: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating audio: {str(e)}"
+        )
+
+@router.get("/{session_id}/play")
+def play_audio(
+    session_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Stream latest audio file for session playback"""
+    session = db.query(models.TherapySession).filter(
+        models.TherapySession.id == session_id
+    ).first()
+
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Therapy session not found"
+        )
+
+    if current_user.role == models.UserRole.PATIENT:
+        if session.patient_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this audio"
+            )
+    elif current_user.role == models.UserRole.PSYCHOLOGIST:
+        if session.psychologist_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this audio"
+            )
+    else:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    if not session.audio_file_path or not os.path.exists(session.audio_file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio file not found"
+        )
+
+    file_path = session.audio_file_path
+    media_type, download_name = _detect_media_type(file_path)
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        filename=download_name
+    )
+
+
+def _get_history_entry(db: Session, history_id: int) -> models.AudioHistory:
+    entry = (
+        db.query(models.AudioHistory)
+        .options(joinedload(models.AudioHistory.session))
+        .filter(models.AudioHistory.id == history_id)
+        .first()
+    )
+    if not entry:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio history not found")
+    return entry
+
+
+@router.get("/history/{session_id}", response_model=List[schemas.AudioHistoryResponse])
+def list_audio_history(
+    session_id: int,
+    current_user: models.User = Depends(get_current_psychologist),
+    db: Session = Depends(get_db)
+):
+    session = db.query(models.TherapySession).options(joinedload(models.TherapySession.audio_history)).filter(
+        models.TherapySession.id == session_id
+    ).first()
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Therapy session not found")
+    if session.psychologist_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+    return session.audio_history
+
+
+@router.post("/history/{history_id}/send")
+def send_audio_history(
+    history_id: int,
+    current_user: models.User = Depends(get_current_psychologist),
+    db: Session = Depends(get_db)
+):
+    entry = _get_history_entry(db, history_id)
+    session = entry.session
+    if session.psychologist_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+    if entry.sent_at:
+        return {"message": "Audio already sent"}
+    entry.sent_at = datetime.utcnow()
+    entry.sent_by = current_user.id
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return {"message": "Audio sent to patient"}
+
+
+@router.get("/history/{history_id}/play")
+def play_audio_history(
+    history_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    entry = _get_history_entry(db, history_id)
+    session = entry.session
+
+    if current_user.role == models.UserRole.PATIENT:
+        if session.patient_id != current_user.id or not entry.sent_at:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this audio")
+    elif current_user.role == models.UserRole.PSYCHOLOGIST:
+        # Allow preview if assigned psychologist OR the current user generated this audio entry
+        if session.psychologist_id != current_user.id and entry.created_by != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this audio")
+    else:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    # Log diagnostics for playback
+    try:
+        file_exists = os.path.exists(entry.file_path)
+        file_size = os.path.getsize(entry.file_path) if file_exists else -1
+        logger.info(f"[audio.play] history_id={history_id} session_id={session.id} provider={entry.provider} path={entry.file_path} exists={file_exists} size={file_size}")
+    except Exception as e:
+        logger.warning(f"[audio.play] stat error for path={entry.file_path}: {e}")
+
+    if not os.path.exists(entry.file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found on disk")
+
+    media_type, download_name = _detect_media_type(entry.file_path)
+    return FileResponse(
+        entry.file_path,
+        media_type=media_type,
+        filename=download_name,
+    )
+
+
+def _detect_media_type(file_path: str) -> tuple[str, str]:
+    _, ext = os.path.splitext(file_path.lower())
+    if ext == ".wav":
+        # Use audio/wave (RFC standard) - frontend will try multiple fallbacks if needed
+        media_type = "audio/wave"
+    elif ext == ".ogg":
+        media_type = "audio/ogg"
+    else:
+        media_type = "audio/mpeg"
+    return media_type, os.path.basename(file_path)
+
