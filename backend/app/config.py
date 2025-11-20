@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     # Development mode: if True, OTP will be returned in response (for testing without SMS)
     sms_dev_mode: bool = False
     
+    # CORS allowed origins (comma-separated list)
+    # Example: "http://localhost:3000,https://yourdomain.com"
+    cors_origins: str = "http://localhost:3000,http://localhost:5173"
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

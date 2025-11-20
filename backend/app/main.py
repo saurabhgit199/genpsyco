@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
 from app.routers import auth, therapy, audio
 from app.routers import chat as chat_router
+from app.config import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,10 +18,12 @@ except Exception as e:
 
 app = FastAPI(title="Mental Health Audio Therapy API", version="1.0.0")
 
-# CORS middleware
+# CORS middleware - parse allowed origins from environment variable
+allowed_origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
