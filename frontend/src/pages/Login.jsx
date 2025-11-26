@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { LoginBackground } from '../assets/illustrations'
 import '../App.css'
 
 const Login = () => {
@@ -36,7 +37,7 @@ const Login = () => {
       setError('No credential received from Google. Please try again.')
       return
     }
-    
+
     setError('')
     setLoading(true)
     try {
@@ -81,7 +82,7 @@ const Login = () => {
               }
             },
           })
-          
+
           // Wait a bit for DOM to be ready, then render button
           setTimeout(() => {
             const buttonContainer = document.getElementById('g_id_signin')
@@ -106,7 +107,7 @@ const Login = () => {
           setError('Google Identity Services not loaded. Please refresh the page.')
         }
       }
-      
+
       script.onerror = () => {
         setError('Failed to load Google Sign-In. Please refresh the page.')
       }
@@ -154,7 +155,15 @@ const Login = () => {
         setDevModeOTP(response.otp_code)
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to send OTP. Please try again.')
+      console.error('OTP request error:', err)
+      const errorMessage = err.response?.data?.detail || err.message || 'Failed to send OTP. Please try again.'
+      setError(errorMessage)
+      // If error message contains OTP code (dev mode), extract it
+      if (err.response?.data?.otp_code) {
+        setDevModeOTP(err.response.data.otp_code)
+        setOtpSent(true)
+        setError('OTP sent in dev mode. Check the code below.')
+      }
     } finally {
       setSendingOTP(false)
     }
@@ -175,27 +184,45 @@ const Login = () => {
   }
 
   return (
-    <div style={{ 
-      minHeight: '100vh', 
-      display: 'flex', 
-      alignItems: 'center', 
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      alignItems: 'center',
       justifyContent: 'center',
-      padding: '20px'
+      padding: '20px',
+      position: 'relative',
+      overflow: 'hidden'
     }}>
-      <div className="card" style={{ maxWidth: '450px', width: '100%' }}>
-        <h1 style={{ 
-          textAlign: 'center', 
-          marginBottom: '0.5rem',
-          background: 'linear-gradient(135deg, var(--primary-600) 0%, var(--purple-600) 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-          fontSize: '2rem'
-        }}>
-          Mental Health Therapy
-        </h1>
-        <h2 style={{ 
-          textAlign: 'center', 
+      <LoginBackground />
+      <div className="card glass-panel animate-fade-in" style={{
+        maxWidth: '450px',
+        width: '100%',
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        border: '1px solid rgba(255, 255, 255, 0.5)'
+      }}>
+        <div style={{ textAlign: 'center', marginBottom: '0.5rem' }}>
+          <div style={{
+            background: 'linear-gradient(135deg, var(--primary-600) 0%, var(--purple-600) 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+            fontSize: '2.25rem',
+            fontWeight: 800,
+            lineHeight: 1.1
+          }}>
+            Genpsyco
+          </div>
+          <div style={{
+            color: 'var(--gray-600)',
+            fontSize: '0.9rem',
+            fontWeight: 500,
+            marginTop: '0.25rem'
+          }}>
+            Personalised Generative therapies
+          </div>
+        </div>
+        <h2 style={{
+          textAlign: 'center',
           marginBottom: '2rem',
           color: 'var(--gray-600)',
           fontSize: '1.5rem',
@@ -203,13 +230,13 @@ const Login = () => {
         }}>
           Login
         </h2>
-        
+
         {error && <div className="error-message">{error}</div>}
-        
+
         {/* Login Method Tabs */}
-        <div style={{ 
-          display: 'flex', 
-          gap: '0.5rem', 
+        <div style={{
+          display: 'flex',
+          gap: '0.5rem',
           marginBottom: '1.5rem',
           borderBottom: '1px solid var(--gray-200)'
         }}>
@@ -309,7 +336,7 @@ const Login = () => {
                 placeholder="Enter your username"
               />
             </div>
-            
+
             <div className="form-group">
               <label>Password</label>
               <input
@@ -320,10 +347,10 @@ const Login = () => {
                 placeholder="Enter your password"
               />
             </div>
-            
-            <button 
-              type="submit" 
-              className="btn btn-primary" 
+
+            <button
+              type="submit"
+              className="btn btn-primary"
               style={{ width: '100%' }}
               disabled={loading}
             >
@@ -376,10 +403,10 @@ const Login = () => {
                     Include country code (e.g., +1 for US)
                   </p>
                 </div>
-                
-                <button 
-                  type="submit" 
-                  className="btn btn-primary" 
+
+                <button
+                  type="submit"
+                  className="btn btn-primary"
                   style={{ width: '100%' }}
                   disabled={sendingOTP}
                 >
@@ -400,9 +427,9 @@ const Login = () => {
                     <p style={{ margin: 0, color: 'var(--primary-700)', fontWeight: 600 }}>
                       🔧 DEV MODE: Your OTP Code is
                     </p>
-                    <p style={{ 
-                      margin: '0.5rem 0 0 0', 
-                      fontSize: '1.5rem', 
+                    <p style={{
+                      margin: '0.5rem 0 0 0',
+                      fontSize: '1.5rem',
                       fontFamily: 'monospace',
                       color: 'var(--primary-900)',
                       fontWeight: 700,
@@ -424,7 +451,7 @@ const Login = () => {
                     required
                     placeholder="000000"
                     maxLength="6"
-                    style={{ 
+                    style={{
                       textAlign: 'center',
                       fontSize: '1.5rem',
                       letterSpacing: '0.5rem',
@@ -435,17 +462,17 @@ const Login = () => {
                     OTP sent to {phoneNumber}
                   </p>
                 </div>
-                
-                <button 
-                  type="submit" 
-                  className="btn btn-primary" 
+
+                <button
+                  type="submit"
+                  className="btn btn-primary"
                   style={{ width: '100%', marginBottom: '0.75rem' }}
                   disabled={loading || otpCode.length !== 6}
                 >
                   {loading ? 'Verifying...' : 'Verify & Login'}
                 </button>
-                
-                <button 
+
+                <button
                   type="button"
                   onClick={() => {
                     setOtpSent(false)
@@ -461,7 +488,7 @@ const Login = () => {
             )}
           </div>
         )}
-        
+
         <p style={{ textAlign: 'center', marginTop: '2rem', color: 'var(--gray-600)' }}>
           Don't have an account? <Link to="/register" style={{ color: 'var(--primary-600)', fontWeight: 600 }}>Register</Link>
         </p>

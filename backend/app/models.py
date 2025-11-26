@@ -65,6 +65,8 @@ class TherapySession(Base):
     audio_file_path = Column(String, nullable=True)  # Path to generated audio file
     
     status = Column(SQLEnum(TherapyStatus), default=TherapyStatus.PENDING)
+    conversation_started = Column(Integer, default=0)  # 1 if conversation mode, 0 if traditional
+    therapy_auto_generated = Column(Integer, default=0)  # 1 if auto-generated from chat
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -87,6 +89,7 @@ class ChatMessage(Base):
     session_id = Column(Integer, ForeignKey("therapy_sessions.id"), nullable=False, index=True)
     sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     content = Column(Text, nullable=False)
+    is_ai_message = Column(Integer, default=0)  # 1 if AI counselor message, 0 if human
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # relationships

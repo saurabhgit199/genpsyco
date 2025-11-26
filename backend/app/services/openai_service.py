@@ -1,5 +1,6 @@
 from openai import OpenAI
 from app.config import settings
+import random
 
 class OpenAIService:
     def __init__(self):
@@ -9,7 +10,7 @@ class OpenAIService:
     
     def generate_therapy_text(self, user_input: str, language: str = "English") -> str:
         """
-        Generate therapy text based on user's mental health concerns.
+        Generate personalized, varied therapy text based on user's mental health concerns.
         
         Args:
             user_input: The patient's mental health concerns
@@ -40,25 +41,104 @@ You have the strength within you to work through this. Trust in your ability to 
 [Note: This is placeholder content. Please configure your OpenAI API key to generate personalized therapy content.]"""
 
         try:
+            # Analyze the input to determine condition type
+            user_input_lower = user_input.lower()
+            condition_keywords = {
+                "anxiety": ["anxious", "anxiety", "worried", "worry", "panic", "nervous", "fear", "afraid"],
+                "depression": ["depressed", "depression", "sad", "sadness", "hopeless", "empty", "down", "low"],
+                "stress": ["stressed", "stress", "overwhelmed", "pressure", "burnout", "exhausted"],
+                "grief": ["grief", "loss", "mourning", "bereavement", "died", "death", "passed"],
+                "trauma": ["trauma", "traumatic", "abuse", "violence", "ptsd", "flashback"],
+                "relationship": ["relationship", "partner", "spouse", "friend", "conflict", "argument", "breakup"],
+                "self-esteem": ["self-esteem", "confidence", "worth", "value", "inadequate", "failure"]
+            }
+            
+            detected_condition = "general"
+            for condition, keywords in condition_keywords.items():
+                if any(keyword in user_input_lower for keyword in keywords):
+                    detected_condition = condition
+                    break
+            
+            # Select a therapy structure for variety
+            therapy_structures = [
+                "narrative_journey",
+                "guided_exploration", 
+                "mindful_presence",
+                "cognitive_reframing",
+                "compassionate_dialogue",
+                "strength_based"
+            ]
+            selected_structure = random.choice(therapy_structures)
+            
+            # Create condition-specific therapy approaches
+            condition_approaches = {
+                "anxiety": "Focus on grounding techniques, thought challenging, and anxiety management strategies. Include progressive muscle relaxation or breathing exercises.",
+                "depression": "Focus on behavioral activation, self-compassion practices, and values-based actions. Include gentle movement or gratitude exercises.",
+                "stress": "Focus on stress management, boundary-setting, and time management reframing. Include stress inoculation techniques.",
+                "grief": "Focus on grief processing, meaning-making, and continuing bonds. Include gentle remembrance practices.",
+                "trauma": "Focus on safety-building, resource installation, and gentle processing. Include grounding and containment exercises.",
+                "relationship": "Focus on communication skills, attachment awareness, and boundary work. Include perspective-taking exercises.",
+                "self-esteem": "Focus on self-compassion, strength identification, and reframing self-criticism. Include self-affirmation practices.",
+                "general": "Focus on emotional validation, coping strategies, and resilience-building. Include mindfulness and self-care practices."
+            }
+            
+            approach_guidance = condition_approaches.get(detected_condition, condition_approaches["general"])
+            
             language_instruction = f"Generate the entire response in {language}." if language and language != "English" else ""
             
-            prompt = f"""You are a compassionate and professional mental health therapist. A patient has shared the following concerns:
+            prompt = f"""You are an experienced, compassionate mental health therapist. A patient has shared the following concerns:
 
 "{user_input}"
 
-Please create a guided affirmative therapy session text that:
-1. Acknowledges their feelings with empathy
-2. Provides therapeutic insights relevant to their concerns
-3. Includes positive affirmations
-4. Offers practical coping strategies
-5. Maintains a warm, supportive, and professional tone
-6. Is appropriate for audio therapy (clear, conversational, and easy to listen to)
-7. Is approximately 500-800 words
-{language_instruction}
+ANALYSIS:
+- Detected Condition Focus: {detected_condition}
+- Therapy Structure: {selected_structure}
+- Recommended Approach: {approach_guidance}
 
-Format the response as a natural, flowing therapy session that would be comforting to listen to. {language_instruction}"""
+Create a UNIQUE, PERSONALIZED therapeutic audio session {language_instruction} that:
 
-            system_message = f"You are a compassionate mental health therapist specializing in creating therapeutic content for audio therapy sessions. Always respond in {language}." if language and language != "English" else "You are a compassionate mental health therapist specializing in creating therapeutic content for audio therapy sessions."
+PERSONALIZATION:
+1. Directly references specific concerns, feelings, or situations mentioned in their input
+2. Uses their words or phrases when appropriate to show understanding
+3. Addresses their specific emotional experience (not generic advice)
+4. Tailors all strategies and exercises to their mentioned concerns
+
+VARIETY & UNIQUENESS:
+5. Uses the {selected_structure} format - make it different from generic therapy scripts
+6. Includes unique therapeutic techniques: {approach_guidance}
+7. Varies pacing with moments of reflection, active exercises, and gentle guidance
+8. Uses creative metaphors or examples relevant to their situation
+9. Includes 2-3 specific, actionable exercises (not just general advice)
+
+CONTENT REQUIREMENTS:
+10. Deeply acknowledges and validates their specific feelings
+11. Provides personalized coping strategies tailored to their concern
+12. Includes a guided exercise (breathing, visualization, body scan, or cognitive exercise)
+13. Offers perspective shifts relevant to their condition
+14. Includes personalized affirmations addressing their specific concerns
+15. Ends with hope and forward movement specific to their journey
+16. Maintains warm, supportive, professional tone
+17. Suitable for audio narration (8-10 minutes when read aloud, 600-900 words)
+
+IMPORTANT: Make this feel like it was created specifically for THIS patient based on THEIR unique concerns. Avoid generic, repetitive content. Each therapy session should feel fresh and personally tailored.
+
+Format as a continuous, flowing narrative that would be comforting and healing to listen to. {language_instruction}"""
+
+            system_message = f"""You are a highly skilled mental health therapist with expertise in multiple therapeutic modalities (CBT, ACT, mindfulness, narrative therapy, trauma-informed care). 
+
+You specialize in creating deeply personalized, varied therapy content that:
+- Is tailored to each patient's specific condition and concerns
+- Uses different therapeutic approaches and structures to avoid repetition
+- Feels authentic, personal, and directly relevant to the patient's experience
+- Incorporates evidence-based techniques appropriate for their condition
+
+Always respond in {language}.""" if language and language != "English" else """You are a highly skilled mental health therapist with expertise in multiple therapeutic modalities (CBT, ACT, mindfulness, narrative therapy, trauma-informed care). 
+
+You specialize in creating deeply personalized, varied therapy content that:
+- Is tailored to each patient's specific condition and concerns
+- Uses different therapeutic approaches and structures to avoid repetition
+- Feels authentic, personal, and directly relevant to the patient's experience
+- Incorporates evidence-based techniques appropriate for their condition"""
 
             response = self.client.chat.completions.create(
                 model=settings.openai_model,
@@ -66,8 +146,8 @@ Format the response as a natural, flowing therapy session that would be comforti
                     {"role": "system", "content": system_message},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7,
-                max_tokens=1500
+                temperature=0.85,  # Higher temperature for more variety and creativity
+                max_tokens=2000  # Allow for more comprehensive, varied content
             )
             
             return response.choices[0].message.content.strip()

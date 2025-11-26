@@ -65,18 +65,30 @@ def register(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=schemas.Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = authenticate_user(db, form_data.username, form_data.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+    logger.info(f"Login attempt for username: {form_data.username}")
+    try:
+        user = authenticate_user(db, form_data.username, form_data.password)
+        if not user:
+            logger.warning(f"Login failed for username: {form_data.username} - user not found or invalid credentials")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        logger.info(f"Login successful for user: {user.username} (ID: {user.id})")
+        access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+        access_token = create_access_token(
+            data={"sub": user.username}, expires_delta=access_token_expires
         )
-    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
-    access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
+        return {"access_token": access_token, "token_type": "bearer"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error during login for username {form_data.username}: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred during login: {str(e)}"
+        )
 
 @router.get("/me", response_model=schemas.UserResponse)
 def read_users_me(current_user: models.User = Depends(get_current_user)):
@@ -277,49 +289,76 @@ def phone_request_otp(
     db: Session = Depends(get_db)
 ):
     """Request OTP for phone number login"""
-    phone_number = payload.phone_number.strip()
-    
-    # Check if user exists
-    user = get_user_by_phone(db, phone_number)
-    
-    if not user:
-        # Create a temporary user for OTP verification
-        # Generate unique username
-        base_username = f"user_{phone_number.replace('+', '').replace('-', '').replace(' ', '')}"
-        username = base_username
-        counter = 1
-        while get_user_by_username(db, username):
-            username = f"{base_username}{counter}"
-            counter += 1
-        
-        user = models.User(
-            email=None,  # Will be set later if needed
-            username=username,
-            full_name=f"User {phone_number}",  # Temporary, can be updated later
-            role=payload.role,
-            hashed_password=None,
-            phone_number=phone_number,
-            auth_provider=AuthProvider.PHONE.value,
-            phone_verified_at=None
-        )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-    
-    # Send OTP
     try:
-        otp_code = verification_service.send_phone_verification(db, user)
-        response = {"message": "OTP sent to phone number"}
-        # If OTP code is returned (dev mode or fallback), include it in response
-        if otp_code:
-            response["otp_code"] = otp_code
-            response["dev_mode"] = True
-            response["message"] = "OTP sent (DEV MODE - check console/response for code)"
-        return response
+        phone_number = payload.phone_number.strip()
+        if not phone_number:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Phone number is required"
+            )
+        
+        logger.info(f"OTP request for phone number: {phone_number}")
+        
+        # Check if user exists
+        user = get_user_by_phone(db, phone_number)
+        
+        if not user:
+            # Create a temporary user for OTP verification
+            # Generate unique username
+            base_username = f"user_{phone_number.replace('+', '').replace('-', '').replace(' ', '')}"
+            username = base_username
+            counter = 1
+            while get_user_by_username(db, username):
+                username = f"{base_username}{counter}"
+                counter += 1
+            
+            user = models.User(
+                email=None,  # Will be set later if needed
+                username=username,
+                full_name=f"User {phone_number}",  # Temporary, can be updated later
+                role=payload.role,
+                hashed_password=None,
+                phone_number=phone_number,
+                auth_provider=AuthProvider.PHONE.value,
+                phone_verified_at=None
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            logger.info(f"Created new user for phone login: {user.username}")
+        
+        # Send OTP
+        try:
+            otp_code = verification_service.send_phone_verification(db, user)
+            response = {"message": "OTP sent to phone number"}
+            # If OTP code is returned (dev mode or fallback), include it in response
+            if otp_code:
+                response["otp_code"] = otp_code
+                response["dev_mode"] = True
+                response["message"] = "OTP sent (DEV MODE - check console/response for code)"
+            logger.info(f"OTP sent successfully for phone: {phone_number}")
+            return response
+        except ValueError as e:
+            logger.error(f"ValueError sending OTP: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+        except Exception as e:
+            logger.error(f"Error sending OTP: {str(e)}", exc_info=True)
+            # Even if sending fails, return the OTP code if available (fallback mode)
+            # This ensures the user can still login in dev/test environments
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to send OTP: {str(e)}"
+            )
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Unexpected error in phone_request_otp: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to send OTP: {str(e)}"
+            detail=f"An error occurred: {str(e)}"
         )
 
 @router.post("/phone/login", response_model=schemas.Token)

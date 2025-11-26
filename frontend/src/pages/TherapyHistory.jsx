@@ -168,65 +168,29 @@ const TherapyHistory = () => {
                     <p style={{ color: '#666', marginTop: '5px' }}>{session.user_input}</p>
                   </div>
 
-                  {session.generated_text && (
-                    <details 
-                      open={isExpanded}
-                      style={{ marginBottom: '15px' }}
-                    >
-                      <summary 
-                        style={{ 
-                          cursor: 'pointer', 
-                          fontWeight: 'bold', 
-                          color: '#1976d2',
-                          padding: '10px',
-                          backgroundColor: '#e3f2fd',
-                          borderRadius: '6px',
-                          marginBottom: '10px'
-                        }}
-                        onClick={(e) => {
-                          e.preventDefault()
-                          toggleExpand(session.id)
-                        }}
-                      >
-                        {isExpanded ? '▼' : '▶'} Generated Therapy Content
-                      </summary>
-                      <div style={{ padding: '15px', backgroundColor: '#f5f5f5', borderRadius: '6px' }}>
-                        <p style={{ color: '#0d47a1', whiteSpace: 'pre-wrap' }}>
-                          {session.generated_text}
+                  {session.generated_text && !session.approved_text && (
+                    <div style={{ 
+                      marginBottom: '15px', 
+                      padding: '15px', 
+                      backgroundColor: '#fff3cd', 
+                      borderRadius: '6px',
+                      border: '1px solid #ffc107'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '10px',
+                        color: '#856404'
+                      }}>
+                        <span style={{ fontSize: '1.5rem' }}>✨</span>
+                        <p style={{ margin: 0, fontWeight: 500 }}>
+                          Your therapy is generated and our psychologist is curating it for you.
                         </p>
                       </div>
-                    </details>
+                    </div>
                   )}
 
-                  {session.approved_text && (
-                    <details 
-                      open={isExpanded}
-                      style={{ marginBottom: '15px' }}
-                    >
-                      <summary 
-                        style={{ 
-                          cursor: 'pointer', 
-                          fontWeight: 'bold', 
-                          color: '#2e7d32',
-                          padding: '10px',
-                          backgroundColor: '#e8f5e9',
-                          borderRadius: '6px',
-                          marginBottom: '10px'
-                        }}
-                        onClick={(e) => {
-                          e.preventDefault()
-                          toggleExpand(session.id)
-                        }}
-                      >
-                        {isExpanded ? '▼' : '▶'} Approved Therapy Content
-                      </summary>
-                      <div style={{ padding: '15px', backgroundColor: '#f5f5f5', borderRadius: '6px' }}>
-                        <p style={{ color: '#1b5e20', whiteSpace: 'pre-wrap' }}>
-                          {session.approved_text}
-                        </p>
-                      </div>
-                    </details>
-                  )}
+                  {/* Approved therapy text is only visible to psychologists in their dashboard */}
 
                   {session.status === 'audio_generated' && session.audio_file_path && (
                     <div style={{ marginTop: '15px', padding: '15px', backgroundColor: '#d1ecf1', borderRadius: '6px' }}>

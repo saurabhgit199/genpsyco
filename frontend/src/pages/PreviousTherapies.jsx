@@ -230,43 +230,29 @@ const PreviousTherapies = () => {
                     </div>
                   )}
 
-                  {session.generated_text && (
-                    <div style={{ marginBottom: '15px' }}>
-                      <details open={isExpanded}>
-                        <summary 
-                          style={{ cursor: 'pointer', fontWeight: 600, color: '#333' }}
-                          onClick={(e) => {
-                            e.preventDefault()
-                            toggleExpand(session.id)
-                          }}
-                        >
-                          {isExpanded ? '▼' : '▶'} Generated Therapy Content
-                        </summary>
-                        <p style={{ color: '#666', marginTop: '10px', whiteSpace: 'pre-wrap' }}>
-                          {session.generated_text}
+                  {session.generated_text && !session.approved_text && (
+                    <div style={{ 
+                      marginBottom: '15px', 
+                      padding: '15px', 
+                      backgroundColor: '#fff3cd', 
+                      borderRadius: '6px',
+                      border: '1px solid #ffc107'
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '10px',
+                        color: '#856404'
+                      }}>
+                        <span style={{ fontSize: '1.5rem' }}>✨</span>
+                        <p style={{ margin: 0, fontWeight: 500 }}>
+                          Your therapy is generated and our psychologist is curating it for you.
                         </p>
-                      </details>
+                      </div>
                     </div>
                   )}
 
-                  {session.approved_text && (
-                    <div style={{ marginBottom: '15px', padding: '15px', backgroundColor: '#e8f5e9', borderRadius: '6px' }}>
-                      <details open={isExpanded}>
-                        <summary 
-                          style={{ cursor: 'pointer', fontWeight: 600, color: '#2e7d32' }}
-                          onClick={(e) => {
-                            e.preventDefault()
-                            toggleExpand(session.id)
-                          }}
-                        >
-                          {isExpanded ? '▼' : '▶'} Approved Therapy Content
-                        </summary>
-                        <p style={{ color: '#1b5e20', marginTop: '10px', whiteSpace: 'pre-wrap' }}>
-                          {session.approved_text}
-                        </p>
-                      </details>
-                    </div>
-                  )}
+                  {/* Approved therapy text is only visible to psychologists in their dashboard */}
 
                   {/* Action Buttons - Always Active */}
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '15px' }}>

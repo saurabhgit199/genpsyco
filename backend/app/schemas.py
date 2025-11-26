@@ -95,6 +95,7 @@ class ChatMessageResponse(BaseModel):
     session_id: int
     sender_id: int
     content: str
+    is_ai_message: bool = False
     created_at: datetime
 
 

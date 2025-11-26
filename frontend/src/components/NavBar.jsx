@@ -21,17 +21,26 @@ const NavBar = () => {
       boxShadow: 'var(--shadow-sm)'
     }}>
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ 
-          color: 'var(--gray-900)', 
-          fontWeight: 700,
-          fontSize: '1.25rem',
-          background: 'linear-gradient(135deg, var(--primary-600) 0%, var(--purple-600) 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text'
-        }}>
-          Therapy App
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+          <span style={{ 
+            color: 'var(--gray-900)', 
+            fontWeight: 800,
+            fontSize: '1.4rem',
+            background: 'linear-gradient(135deg, var(--primary-600) 0%, var(--purple-600) 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text'
+          }}>
+            Genpsyco
+          </span>
+          <span style={{
+            color: 'var(--gray-600)',
+            fontSize: '0.8rem',
+            fontWeight: 500
+          }}>
+            Personalised Generative therapy
+          </span>
+        </div>
         {user?.role === 'patient' && (
           <>
             <Link 

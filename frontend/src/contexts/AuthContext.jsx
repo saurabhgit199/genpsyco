@@ -41,22 +41,33 @@ export const AuthProvider = ({ children }) => {
   }
 
   const login = async (username, password) => {
-    const formData = new FormData()
-    formData.append('username', username)
-    formData.append('password', password)
+    // OAuth2PasswordRequestForm expects application/x-www-form-urlencoded
+    const params = new URLSearchParams()
+    params.append('username', username)
+    params.append('password', password)
 
-    const response = await axios.post('/api/auth/login', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    })
+    try {
+      const response = await axios.post('/api/auth/login', params, {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      })
 
-    const { access_token } = response.data
-    setToken(access_token)
-    localStorage.setItem('token', access_token)
-    axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
-    await fetchUser()
-    return response.data
+      const { access_token } = response.data
+      setToken(access_token)
+      localStorage.setItem('token', access_token)
+      axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
+      await fetchUser()
+      return response.data
+    } catch (error) {
+      // Log error details for debugging
+      console.error('Login error:', error)
+      if (error.response) {
+        console.error('Response status:', error.response.status)
+        console.error('Response data:', error.response.data)
+      }
+      throw error
+    }
   }
 
   const googleLogin = async (googleToken, role) => {

@@ -82,29 +82,18 @@ def create_therapy_session(
     current_user: models.User = Depends(get_current_patient),
     db: Session = Depends(get_db)
 ):
-    """Create a new therapy session and generate initial therapy text"""
-    # Generate therapy text using OpenAI
-    try:
-        language = session_data.language or "English"
-        generated_text = openai_service.generate_therapy_text(session_data.user_input, language=language)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error generating therapy text: {str(e)}"
-        )
-    
-    # Create therapy session
+    """Create a new therapy session in conversation mode (no initial therapy text generation)"""
+    # Create therapy session in conversation mode - therapy will be auto-generated from chat
     db_session = models.TherapySession(
         patient_id=current_user.id,
-        user_input=session_data.user_input,
-        generated_text=generated_text,
+        user_input=session_data.user_input or "Starting conversation...",
+        generated_text=None,  # Will be generated from conversation
+        conversation_started=1,  # Mark as conversation mode
         status=models.TherapyStatus.PENDING
     )
     db.add(db_session)
     db.commit()
     db.refresh(db_session)
-
-    mongo_therapy_history.record_user_prompt(db_session, session_data.user_input, generated_text)
     
     # Load patient relationship
     db_session = _session_query(db).filter(models.TherapySession.id == db_session.id).first()

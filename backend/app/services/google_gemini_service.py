@@ -5,6 +5,10 @@ import requests
 from app.config import settings
 import io
 import wave
+import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 VOICE_INSTRUCTION = (
     "Read aloud in a slow, calming, meditative female voice.\n"
@@ -69,9 +73,67 @@ class GoogleGeminiService:
             "x-goog-api-key": self.api_key
         }
 
-        response = requests.post(self.base_url, headers=headers, json=payload, timeout=120)
-        if response.status_code != 200:
-            raise Exception(f"Google Gemini API error: {response.text}")
+        # Increase timeout for longer therapy texts (5 minutes)
+        # Google Gemini TTS can take longer for comprehensive therapy content
+        # Add retry logic for transient network errors
+        max_retries = 2
+        retry_delay = 5  # seconds
+        
+        for attempt in range(max_retries + 1):
+            try:
+                logger.info(f"Attempting Google Gemini TTS request (attempt {attempt + 1}/{max_retries + 1})")
+                response = requests.post(
+                    self.base_url, 
+                    headers=headers, 
+                    json=payload, 
+                    timeout=300  # 5 minutes timeout
+                )
+                
+                if response.status_code == 200:
+                    break  # Success, exit retry loop
+                    
+                # If it's a non-retryable error (4xx), don't retry
+                if 400 <= response.status_code < 500:
+                    error_detail = response.text
+                    try:
+                        error_json = response.json()
+                        error_detail = error_json.get("error", {}).get("message", error_detail)
+                    except:
+                        pass
+                    raise Exception(f"Google Gemini API error (status {response.status_code}): {error_detail}")
+                
+                # For 5xx errors, retry if we have attempts left
+                if attempt < max_retries:
+                    logger.warning(f"Google Gemini API returned {response.status_code}, retrying in {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    error_detail = response.text
+                    try:
+                        error_json = response.json()
+                        error_detail = error_json.get("error", {}).get("message", error_detail)
+                    except:
+                        pass
+                    raise Exception(f"Google Gemini API error (status {response.status_code}): {error_detail}")
+                    
+            except requests.exceptions.Timeout:
+                if attempt < max_retries:
+                    logger.warning(f"Google Gemini API request timed out, retrying in {retry_delay}s...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    raise Exception(
+                        "Google Gemini API request timed out after 5 minutes. "
+                        "The therapy text may be too long, or the API is experiencing delays. "
+                        "Please try again or use Voice Engine A (ElevenLabs) instead."
+                    )
+            except requests.exceptions.RequestException as e:
+                if attempt < max_retries:
+                    logger.warning(f"Network error connecting to Google Gemini API, retrying in {retry_delay}s...: {str(e)}")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    raise Exception(f"Network error connecting to Google Gemini API: {str(e)}")
 
         data = response.json()
         audio_b64 = None

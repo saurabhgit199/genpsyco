@@ -16,7 +16,7 @@ except Exception as e:
     logger.error(f"Failed to create database tables: {e}")
     # Don't crash the app, but log the error
 
-app = FastAPI(title="Mental Health Audio Therapy API", version="1.0.0")
+app = FastAPI(title="Genpsyco- Personalised Generative therapies API", version="1.0.0")
 
 # CORS middleware - parse allowed origins from environment variable
 allowed_origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
@@ -37,7 +37,7 @@ app.include_router(chat_router.router, prefix="/api/chat", tags=["chat"])
 
 @app.get("/")
 def read_root():
-    return {"message": "Mental Health Audio Therapy API"}
+    return {"message": "Genpsyco- Personalised Generative therapies API"}
 
 @app.get("/api/health")
 def health_check():
