@@ -2,13 +2,17 @@ from datetime import datetime
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
+import logging
 from app.database import get_db
 from app import models, schemas
 from app.auth import get_current_user, get_current_patient, get_current_psychologist
 from app.services.openai_service import openai_service
 from app.services.elevenlabs_service import elevenlabs_service
 from app.services import mongo_therapy_history
+from app.services.s3_storage import s3_storage
 import os
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -190,8 +194,24 @@ def update_therapy_input(
     session.psychologist_id = None
     session.approved_at = None
 
-    if session.audio_file_path and os.path.exists(session.audio_file_path):
-        os.remove(session.audio_file_path)
+    # Delete audio file (S3 or local)
+    if session.audio_file_path:
+        if s3_storage.is_s3_url(session.audio_file_path):
+            # Extract S3 key from URL and delete from S3
+            # URL format: https://bucket.s3.region.amazonaws.com/audio/key
+            try:
+                # Extract key from S3 URL
+                if 'amazonaws.com/' in session.audio_file_path:
+                    s3_key = session.audio_file_path.split('amazonaws.com/')[1]
+                    s3_storage.delete_file(s3_key)
+            except Exception as e:
+                logger.warning(f"Failed to delete S3 file: {e}")
+        elif os.path.exists(session.audio_file_path):
+            # Delete local file
+            try:
+                os.remove(session.audio_file_path)
+            except Exception as e:
+                logger.warning(f"Failed to delete local file: {e}")
     session.audio_file_path = None
 
     db.commit()

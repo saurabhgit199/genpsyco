@@ -9,6 +9,8 @@ from app import models, schemas
 from app.auth import get_current_user, get_current_psychologist
 from app.services.elevenlabs_service import elevenlabs_service, ElevenLabsPaymentIssueError
 from app.services.google_gemini_service import google_gemini_service
+from app.services.s3_storage import s3_storage
+from fastapi.responses import RedirectResponse
 import os
 from pydantic import BaseModel
 
@@ -80,22 +82,47 @@ def generate_audio(
     audio_path = os.path.join(AUDIO_DIR, audio_filename)
 
     try:
+        # Generate audio locally first
         if provider == "google":
             google_gemini_service.text_to_speech(session.approved_text, audio_path, voice_id=voice_id, instruction=instruction)
         else:
             elevenlabs_service.text_to_speech(session.approved_text, audio_path, voice_id=voice_id)
         
+        # Upload to S3 if configured, otherwise use local path
+        final_file_path = audio_path
+        if s3_storage.is_configured():
+            # Create S3 key (path in bucket)
+            s3_key = f"audio/therapy_session_{session_id}_{timestamp}{extension}"
+            
+            # Upload to S3
+            s3_url = s3_storage.upload_file(audio_path, s3_key)
+            
+            if s3_url:
+                # Use S3 URL instead of local path
+                final_file_path = s3_url
+                logger.info(f"Audio uploaded to S3: {s3_url}")
+                
+                # Clean up local file after successful upload
+                try:
+                    os.remove(audio_path)
+                    logger.info(f"Local file cleaned up: {audio_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean up local file: {e}")
+            else:
+                logger.warning("S3 upload failed, using local path")
+        
+        # Store file path (S3 URL or local path) in database
         history_entry = models.AudioHistory(
             session_id=session.id,
             provider=provider,
             voice_id=voice_id,
             instruction=instruction,
-            file_path=audio_path,
+            file_path=final_file_path,
             created_by=current_user.id,
         )
         db.add(history_entry)
 
-        session.audio_file_path = audio_path
+        session.audio_file_path = final_file_path
         session.status = models.TherapyStatus.AUDIO_GENERATED
 
         db.commit()
@@ -103,7 +130,7 @@ def generate_audio(
 
         return {
             "message": "Audio generated successfully",
-            "audio_path": audio_path,
+            "audio_path": final_file_path,
             "session_id": session_id,
             "history_id": history_entry.id,
         }
@@ -150,13 +177,26 @@ def play_audio(
     else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
 
-    if not session.audio_file_path or not os.path.exists(session.audio_file_path):
+    if not session.audio_file_path:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Audio file not found"
         )
 
     file_path = session.audio_file_path
+    
+    # Check if it's an S3 URL
+    if s3_storage.is_s3_url(file_path):
+        # Redirect to S3 URL for direct access
+        return RedirectResponse(url=file_path, status_code=302)
+    
+    # Otherwise, serve from local filesystem (backward compatibility)
+    if not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio file not found on disk"
+        )
+    
     media_type, download_name = _detect_media_type(file_path)
     return FileResponse(
         file_path,
@@ -232,6 +272,13 @@ def play_audio_history(
     else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
 
+    # Check if it's an S3 URL
+    if s3_storage.is_s3_url(entry.file_path):
+        # Redirect to S3 URL for direct access
+        logger.info(f"[audio.play] history_id={history_id} session_id={session.id} provider={entry.provider} S3 URL: {entry.file_path}")
+        return RedirectResponse(url=entry.file_path, status_code=302)
+    
+    # Otherwise, serve from local filesystem (backward compatibility)
     # Log diagnostics for playback
     try:
         file_exists = os.path.exists(entry.file_path)

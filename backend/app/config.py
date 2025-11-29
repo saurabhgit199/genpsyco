@@ -47,6 +47,17 @@ class Settings(BaseSettings):
     # Example: "http://localhost:3000,https://yourdomain.com"
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
     
+    # LiveKit configuration
+    livekit_url: Optional[str] = None
+    livekit_api_key: Optional[str] = None
+    livekit_api_secret: Optional[str] = None
+    
+    # AWS S3 configuration for audio storage
+    aws_access_key_id: Optional[str] = None
+    aws_secret_access_key: Optional[str] = None
+    aws_s3_bucket_name: Optional[str] = None
+    aws_s3_region: str = "us-east-1"
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
