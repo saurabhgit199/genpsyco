@@ -3,9 +3,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
 from app.routers import auth, therapy, audio
 from app.routers import chat as chat_router
-from app.routers import livekit
 from app.config import settings
 import logging
+
+# Try to import livekit router (optional - only if LiveKit is configured)
+try:
+    from app.routers import livekit
+    LIVEKIT_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"LiveKit router not available: {e}")
+    LIVEKIT_AVAILABLE = False
+    livekit = None
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +59,8 @@ app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
 app.include_router(therapy.router, prefix="/api/therapy", tags=["therapy"])
 app.include_router(audio.router, prefix="/api/audio", tags=["audio"])
 app.include_router(chat_router.router, prefix="/api/chat", tags=["chat"])
-app.include_router(livekit.router, prefix="/api/livekit", tags=["livekit"])
+if LIVEKIT_AVAILABLE and livekit:
+    app.include_router(livekit.router, prefix="/api/livekit", tags=["livekit"])
 
 @app.get("/")
 def read_root():
