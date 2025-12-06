@@ -179,14 +179,25 @@ class S3StorageService:
                 # Extract key from URL: https://bucket.s3.region.amazonaws.com/key
                 # or https://s3.region.amazonaws.com/bucket/key
                 if f'/{self.bucket_name}/' in s3_key_or_url:
+                    # Path-style: https://s3.region.amazonaws.com/bucket/key
                     key = s3_key_or_url.split(f'/{self.bucket_name}/', 1)[1]
+                    # Remove query parameters if any
+                    key = key.split('?')[0]
                 elif f'{self.bucket_name}.s3.' in s3_key_or_url:
-                    key = s3_key_or_url.split(f'{self.bucket_name}.s3.', 1)[1].split('/', 1)[1]
+                    # Virtual-hosted-style: https://bucket.s3.region.amazonaws.com/key
+                    key = s3_key_or_url.split(f'{self.bucket_name}.s3.', 1)[1]
+                    # Remove region and get key part
+                    if '/' in key:
+                        key = key.split('/', 1)[1]
+                    else:
+                        key = ''
+                    # Remove query parameters if any
+                    key = key.split('?')[0]
                 else:
                     logger.error(f"Could not extract key from URL: {s3_key_or_url}")
                     return None
             else:
-                # Assume it's already a key
+                # Assume it's already a key (backward compatibility)
                 key = s3_key_or_url
             
             # Generate presigned URL
