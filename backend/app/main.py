@@ -38,21 +38,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Check and log S3 configuration status at startup
-from app.services.s3_storage import s3_storage
-
-logger.info("=" * 50)
-logger.info("S3 Configuration Check:")
-logger.info(f"AWS_ACCESS_KEY_ID: {'SET' if settings.aws_access_key_id else 'NOT SET'}")
-logger.info(f"AWS_SECRET_ACCESS_KEY: {'SET' if settings.aws_secret_access_key else 'NOT SET'}")
-logger.info(f"AWS_S3_BUCKET_NAME: {settings.aws_s3_bucket_name or 'NOT SET'}")
-logger.info(f"AWS_S3_REGION: {settings.aws_s3_region}")
-logger.info(f"S3 Configured: {s3_storage.is_configured()}")
-if s3_storage.is_configured():
-    logger.info(f"S3 Bucket: {s3_storage.bucket_name}")
-else:
-    logger.warning("S3 is NOT configured - audio files will be stored locally")
-logger.info("=" * 50)
+@app.on_event("startup")
+async def startup_event():
+    """Log S3 configuration status at startup"""
+    from app.services.s3_storage import s3_storage
+    
+    logger.info("=" * 50)
+    logger.info("S3 Configuration Check:")
+    logger.info(f"AWS_ACCESS_KEY_ID: {'SET' if settings.aws_access_key_id else 'NOT SET'}")
+    logger.info(f"AWS_SECRET_ACCESS_KEY: {'SET' if settings.aws_secret_access_key else 'NOT SET'}")
+    logger.info(f"AWS_S3_BUCKET_NAME: {settings.aws_s3_bucket_name or 'NOT SET'}")
+    logger.info(f"AWS_S3_REGION: {settings.aws_s3_region}")
+    logger.info(f"S3 Configured: {s3_storage.is_configured()}")
+    if s3_storage.is_configured():
+        logger.info(f"S3 Bucket: {s3_storage.bucket_name}")
+    else:
+        logger.warning("S3 is NOT configured - audio files will be stored locally")
+    logger.info("=" * 50)
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["authentication"])
