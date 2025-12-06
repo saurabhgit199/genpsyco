@@ -6,6 +6,8 @@ from app.routers import chat as chat_router
 from app.config import settings
 import logging
 
+logger = logging.getLogger(__name__)
+
 # Try to import livekit router (optional - only if LiveKit is configured)
 try:
     from app.routers import livekit
@@ -14,8 +16,6 @@ except ImportError as e:
     logger.warning(f"LiveKit router not available: {e}")
     LIVEKIT_AVAILABLE = False
     livekit = None
-
-logger = logging.getLogger(__name__)
 
 # Create database tables (with error handling)
 try:
