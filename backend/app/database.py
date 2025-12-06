@@ -12,6 +12,9 @@ engine = create_engine(
     connect_args=connect_args,
     pool_pre_ping=True,
     echo=settings.sqlalchemy_echo,
+    pool_size=10,  # Increase pool size from default 5
+    max_overflow=20,  # Increase overflow from default 10
+    pool_recycle=3600,  # Recycle connections after 1 hour to prevent stale connections
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
