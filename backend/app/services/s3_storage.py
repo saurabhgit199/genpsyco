@@ -51,7 +51,8 @@ class S3StorageService:
             s3_key: S3 object key (path in bucket)
         
         Returns:
-            S3 URL if successful, None otherwise
+            S3 key (not URL) if successful, None otherwise
+            Note: We store the S3 key and generate presigned URLs on-demand
         """
         if not self.is_configured():
             logger.warning("S3 not configured, skipping upload")
@@ -70,15 +71,10 @@ class S3StorageService:
                 ExtraArgs={'ContentType': self._get_content_type(local_file_path)}
             )
             
-            # Generate public URL (supports both path-style and virtual-hosted-style)
-            # Try virtual-hosted-style first (most common)
-            if '.' not in self.bucket_name:
-                s3_url = f"https://{self.bucket_name}.s3.{settings.aws_s3_region}.amazonaws.com/{s3_key}"
-            else:
-                # Use path-style for buckets with dots in name
-                s3_url = f"https://s3.{settings.aws_s3_region}.amazonaws.com/{self.bucket_name}/{s3_key}"
-            logger.info(f"File uploaded to S3: {s3_url}")
-            return s3_url
+            # Store S3 key with prefix to identify it as S3
+            s3_identifier = f"s3://{self.bucket_name}/{s3_key}"
+            logger.info(f"File uploaded to S3: {s3_identifier}")
+            return s3_identifier
             
         except NoCredentialsError:
             logger.error("AWS credentials not found")
@@ -147,8 +143,67 @@ class S3StorageService:
             return False
     
     def is_s3_url(self, file_path: str) -> bool:
-        """Check if a file path is an S3 URL"""
-        return file_path.startswith('https://') and 's3' in file_path and 'amazonaws.com' in file_path
+        """Check if a file path is an S3 URL or S3 identifier"""
+        return (file_path.startswith('https://') and 's3' in file_path and 'amazonaws.com' in file_path) or \
+               file_path.startswith('s3://')
+    
+    def get_presigned_url(self, s3_key_or_url: str, expiration: int = 3600) -> Optional[str]:
+        """
+        Generate a presigned URL for accessing an S3 object.
+        Works with both S3 keys (s3://bucket/key) and existing S3 URLs.
+        
+        Args:
+            s3_key_or_url: S3 key (s3://bucket/key) or existing S3 URL
+            expiration: URL expiration time in seconds (default 1 hour)
+        
+        Returns:
+            Presigned URL if successful, None otherwise
+        """
+        if not self.is_configured():
+            return None
+        
+        try:
+            # Extract S3 key from different formats
+            if s3_key_or_url.startswith('s3://'):
+                # Format: s3://bucket/key
+                parts = s3_key_or_url[5:].split('/', 1)
+                if len(parts) == 2:
+                    bucket, key = parts
+                    if bucket != self.bucket_name:
+                        logger.warning(f"Bucket mismatch: {bucket} != {self.bucket_name}")
+                        return None
+                else:
+                    logger.error(f"Invalid S3 identifier format: {s3_key_or_url}")
+                    return None
+            elif 'amazonaws.com' in s3_key_or_url:
+                # Extract key from URL: https://bucket.s3.region.amazonaws.com/key
+                # or https://s3.region.amazonaws.com/bucket/key
+                if f'/{self.bucket_name}/' in s3_key_or_url:
+                    key = s3_key_or_url.split(f'/{self.bucket_name}/', 1)[1]
+                elif f'{self.bucket_name}.s3.' in s3_key_or_url:
+                    key = s3_key_or_url.split(f'{self.bucket_name}.s3.', 1)[1].split('/', 1)[1]
+                else:
+                    logger.error(f"Could not extract key from URL: {s3_key_or_url}")
+                    return None
+            else:
+                # Assume it's already a key
+                key = s3_key_or_url
+            
+            # Generate presigned URL
+            presigned_url = self.s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': self.bucket_name, 'Key': key},
+                ExpiresIn=expiration
+            )
+            logger.info(f"Generated presigned URL for S3 key: {key}")
+            return presigned_url
+            
+        except ClientError as e:
+            logger.error(f"Error generating presigned URL: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error generating presigned URL: {e}")
+            return None
     
     def _get_content_type(self, file_path: str) -> str:
         """Get content type based on file extension"""

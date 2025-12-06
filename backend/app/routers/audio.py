@@ -185,10 +185,19 @@ def play_audio(
 
     file_path = session.audio_file_path
     
-    # Check if it's an S3 URL
+    # Check if it's an S3 URL or S3 identifier
     if s3_storage.is_s3_url(file_path):
-        # Redirect to S3 URL for direct access
-        return RedirectResponse(url=file_path, status_code=302)
+        # Generate presigned URL for private buckets
+        presigned_url = s3_storage.get_presigned_url(file_path)
+        if presigned_url:
+            logger.info(f"[audio.play] session_id={session_id} S3 presigned URL generated")
+            return RedirectResponse(url=presigned_url, status_code=302)
+        else:
+            logger.error(f"[audio.play] session_id={session_id} Failed to generate presigned URL for: {file_path}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate audio access URL"
+            )
     
     # Otherwise, serve from local filesystem (backward compatibility)
     if not os.path.exists(file_path):
@@ -272,11 +281,19 @@ def play_audio_history(
     else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
 
-    # Check if it's an S3 URL
+    # Check if it's an S3 URL or S3 identifier
     if s3_storage.is_s3_url(entry.file_path):
-        # Redirect to S3 URL for direct access
-        logger.info(f"[audio.play] history_id={history_id} session_id={session.id} provider={entry.provider} S3 URL: {entry.file_path}")
-        return RedirectResponse(url=entry.file_path, status_code=302)
+        # Generate presigned URL for private buckets
+        presigned_url = s3_storage.get_presigned_url(entry.file_path)
+        if presigned_url:
+            logger.info(f"[audio.play] history_id={history_id} session_id={session.id} provider={entry.provider} S3 presigned URL generated")
+            return RedirectResponse(url=presigned_url, status_code=302)
+        else:
+            logger.error(f"[audio.play] history_id={history_id} Failed to generate presigned URL for: {entry.file_path}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate audio access URL"
+            )
     
     # Otherwise, serve from local filesystem (backward compatibility)
     # Log diagnostics for playback
