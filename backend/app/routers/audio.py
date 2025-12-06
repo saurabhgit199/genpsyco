@@ -370,13 +370,48 @@ async def play_audio_history(
 
 
 def _detect_media_type(file_path: str) -> tuple[str, str]:
-    _, ext = os.path.splitext(file_path.lower())
+    # Extract file path for extension detection
+    # Handle S3 URLs and identifiers
+    if file_path.startswith('s3://'):
+        # Format: s3://bucket/key
+        path_for_ext = file_path.split('/', 3)[-1] if '/' in file_path[5:] else file_path
+    elif 'amazonaws.com' in file_path or file_path.startswith('https://'):
+        # Extract from URL - get the path part
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(file_path)
+            path_for_ext = parsed.path
+        except:
+            path_for_ext = file_path
+    else:
+        path_for_ext = file_path
+    
+    _, ext = os.path.splitext(path_for_ext.lower())
+    
+    # Use browser-compatible MIME types
     if ext == ".wav":
-        # Use audio/wave (RFC standard) - frontend will try multiple fallbacks if needed
-        media_type = "audio/wave"
+        # Use audio/x-wav for better browser compatibility
+        media_type = "audio/x-wav"
     elif ext == ".ogg":
         media_type = "audio/ogg"
+    elif ext == ".m4a":
+        media_type = "audio/mp4"
     else:
+        # Default to MP3 for .mp3 and unknown extensions
         media_type = "audio/mpeg"
-    return media_type, os.path.basename(file_path)
+    
+    # Extract filename for Content-Disposition
+    if file_path.startswith('s3://'):
+        filename = os.path.basename(file_path.split('/', 3)[-1]) if '/' in file_path[5:] else "audio"
+    elif 'amazonaws.com' in file_path:
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(file_path)
+            filename = os.path.basename(parsed.path) or "audio"
+        except:
+            filename = os.path.basename(file_path) or "audio"
+    else:
+        filename = os.path.basename(file_path) or "audio"
+    
+    return media_type, filename
 
