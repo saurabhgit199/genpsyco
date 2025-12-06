@@ -1,16 +1,16 @@
 from datetime import datetime
 from typing import List, Literal
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 import logging
+import httpx
 from app.database import get_db
 from app import models, schemas
 from app.auth import get_current_user, get_current_psychologist
 from app.services.elevenlabs_service import elevenlabs_service, ElevenLabsPaymentIssueError
 from app.services.google_gemini_service import google_gemini_service
 from app.services.s3_storage import s3_storage
-from fastapi.responses import RedirectResponse
 import os
 from pydantic import BaseModel
 
@@ -80,7 +80,7 @@ def generate_audio(
     timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     audio_filename = f"therapy_session_{session_id}_{timestamp}{extension}"
     audio_path = os.path.join(AUDIO_DIR, audio_filename)
-
+    
     try:
         # Generate audio locally first
         if provider == "google":
@@ -127,7 +127,7 @@ def generate_audio(
 
         db.commit()
         db.refresh(history_entry)
-
+        
         return {
             "message": "Audio generated successfully",
             "audio_path": final_file_path,
@@ -146,7 +146,7 @@ def generate_audio(
         )
 
 @router.get("/{session_id}/play")
-def play_audio(
+async def play_audio(
     session_id: int,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -155,13 +155,13 @@ def play_audio(
     session = db.query(models.TherapySession).filter(
         models.TherapySession.id == session_id
     ).first()
-
+    
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Therapy session not found"
         )
-
+    
     if current_user.role == models.UserRole.PATIENT:
         if session.patient_id != current_user.id:
             raise HTTPException(
@@ -176,23 +176,49 @@ def play_audio(
             )
     else:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
-
+    
     if not session.audio_file_path:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Audio file not found"
         )
-
+    
     file_path = session.audio_file_path
     
     # Check if it's an S3 URL or S3 identifier
     if s3_storage.is_s3_url(file_path):
         logger.info(f"[audio.play] session_id={session_id} file_path={file_path}")
-        # Generate presigned URL for private buckets
+        # Get presigned URL and stream the audio through backend
         presigned_url = s3_storage.get_presigned_url(file_path)
         if presigned_url:
-            logger.info(f"[audio.play] session_id={session_id} S3 presigned URL generated")
-            return RedirectResponse(url=presigned_url, status_code=302)
+            try:
+                # Stream audio from S3 and proxy it to the client
+                async def stream_audio():
+                    async with httpx.AsyncClient(timeout=300.0) as client:
+                        async with client.stream('GET', presigned_url) as response:
+                            response.raise_for_status()
+                            async for chunk in response.aiter_bytes():
+                                yield chunk
+                
+                media_type, download_name = _detect_media_type(file_path)
+                
+                logger.info(f"[audio.play] session_id={session_id} Streaming from S3")
+                return StreamingResponse(
+                    stream_audio(),
+                    media_type=media_type,
+                    headers={
+                        "Content-Disposition": f'inline; filename="{download_name}"',
+                        "Cache-Control": "public, max-age=3600"
+                    }
+                )
+            except Exception as e:
+                logger.error(f"[audio.play] session_id={session_id} Error streaming from S3: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to stream audio: {str(e)}"
+                )
         else:
             logger.error(f"[audio.play] session_id={session_id} Failed to generate presigned URL for: {file_path}")
             raise HTTPException(
@@ -264,7 +290,7 @@ def send_audio_history(
 
 
 @router.get("/history/{history_id}/play")
-def play_audio_history(
+async def play_audio_history(
     history_id: int,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -285,11 +311,37 @@ def play_audio_history(
     # Check if it's an S3 URL or S3 identifier
     if s3_storage.is_s3_url(entry.file_path):
         logger.info(f"[audio.play] history_id={history_id} file_path={entry.file_path}")
-        # Generate presigned URL for private buckets
+        # Get presigned URL and stream the audio through backend
         presigned_url = s3_storage.get_presigned_url(entry.file_path)
         if presigned_url:
-            logger.info(f"[audio.play] history_id={history_id} session_id={session.id} provider={entry.provider} S3 presigned URL generated")
-            return RedirectResponse(url=presigned_url, status_code=302)
+            try:
+                # Stream audio from S3 and proxy it to the client
+                async def stream_audio():
+                    async with httpx.AsyncClient(timeout=300.0) as client:
+                        async with client.stream('GET', presigned_url) as response:
+                            response.raise_for_status()
+                            async for chunk in response.aiter_bytes():
+                                yield chunk
+                
+                media_type, download_name = _detect_media_type(entry.file_path)
+                
+                logger.info(f"[audio.play] history_id={history_id} session_id={session.id} provider={entry.provider} Streaming from S3")
+                return StreamingResponse(
+                    stream_audio(),
+                    media_type=media_type,
+                    headers={
+                        "Content-Disposition": f'inline; filename="{download_name}"',
+                        "Cache-Control": "public, max-age=3600"
+                    }
+                )
+            except Exception as e:
+                logger.error(f"[audio.play] history_id={history_id} Error streaming from S3: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to stream audio: {str(e)}"
+                )
         else:
             logger.error(f"[audio.play] history_id={history_id} Failed to generate presigned URL for: {entry.file_path}")
             raise HTTPException(
