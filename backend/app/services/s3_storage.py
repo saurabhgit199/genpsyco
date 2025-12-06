@@ -160,9 +160,11 @@ class S3StorageService:
             Presigned URL if successful, None otherwise
         """
         if not self.is_configured():
+            logger.warning("S3 not configured, cannot generate presigned URL")
             return None
         
         try:
+            key = None
             # Extract S3 key from different formats
             if s3_key_or_url.startswith('s3://'):
                 # Format: s3://bucket/key
@@ -200,20 +202,31 @@ class S3StorageService:
                 # Assume it's already a key (backward compatibility)
                 key = s3_key_or_url
             
+            if not key:
+                logger.error(f"Empty key extracted from: {s3_key_or_url}")
+                return None
+            
+            logger.info(f"Generating presigned URL for bucket={self.bucket_name}, key={key}")
+            
             # Generate presigned URL
             presigned_url = self.s3_client.generate_presigned_url(
                 'get_object',
                 Params={'Bucket': self.bucket_name, 'Key': key},
                 ExpiresIn=expiration
             )
-            logger.info(f"Generated presigned URL for S3 key: {key}")
+            logger.info(f"Successfully generated presigned URL (length={len(presigned_url)})")
             return presigned_url
             
         except ClientError as e:
-            logger.error(f"Error generating presigned URL: {e}")
+            error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+            logger.error(f"Error generating presigned URL (Code: {error_code}): {e}")
+            logger.error(f"Input was: {s3_key_or_url}")
             return None
         except Exception as e:
             logger.error(f"Unexpected error generating presigned URL: {e}")
+            logger.error(f"Input was: {s3_key_or_url}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
     
     def _get_content_type(self, file_path: str) -> str:

@@ -187,6 +187,7 @@ def play_audio(
     
     # Check if it's an S3 URL or S3 identifier
     if s3_storage.is_s3_url(file_path):
+        logger.info(f"[audio.play] session_id={session_id} file_path={file_path}")
         # Generate presigned URL for private buckets
         presigned_url = s3_storage.get_presigned_url(file_path)
         if presigned_url:
@@ -283,6 +284,7 @@ def play_audio_history(
 
     # Check if it's an S3 URL or S3 identifier
     if s3_storage.is_s3_url(entry.file_path):
+        logger.info(f"[audio.play] history_id={history_id} file_path={entry.file_path}")
         # Generate presigned URL for private buckets
         presigned_url = s3_storage.get_presigned_url(entry.file_path)
         if presigned_url:
