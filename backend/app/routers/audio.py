@@ -317,9 +317,11 @@ async def play_audio_history(
             try:
                 # Stream audio from S3 and proxy it to the client
                 async def stream_audio():
-                    async with httpx.AsyncClient(timeout=300.0) as client:
+                    async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
                         async with client.stream('GET', presigned_url) as response:
-                            response.raise_for_status()
+                            # Check status after redirects are followed
+                            if response.status_code >= 400:
+                                response.raise_for_status()
                             async for chunk in response.aiter_bytes():
                                 yield chunk
                 
