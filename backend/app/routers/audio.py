@@ -88,6 +88,21 @@ def generate_audio(
         else:
             elevenlabs_service.text_to_speech(session.approved_text, audio_path, voice_id=voice_id)
         
+        # Verify local file was created and has content
+        if not os.path.exists(audio_path):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Audio file was not created"
+            )
+        
+        local_file_size = os.path.getsize(audio_path)
+        logger.info(f"[audio.generate] session_id={session_id} Local file created: {audio_path}, size={local_file_size} bytes")
+        
+        # Validate file size (should be at least 1KB for valid audio)
+        if local_file_size < 1024:
+            logger.error(f"[audio.generate] session_id={session_id} File too small: {local_file_size} bytes - audio generation may have failed")
+            # Don't fail completely, but log the warning
+        
         # Upload to S3 if configured, otherwise use local path
         final_file_path = audio_path
         if s3_storage.is_configured():
@@ -98,18 +113,28 @@ def generate_audio(
             s3_url = s3_storage.upload_file(audio_path, s3_key)
             
             if s3_url:
+                # Verify S3 upload by checking object size (use s3_url which is the s3:// identifier)
+                s3_size = s3_storage.get_file_size(s3_url)
+                if s3_size is not None:
+                    if s3_size != local_file_size:
+                        logger.error(f"[audio.generate] session_id={session_id} Size mismatch! Local={local_file_size}, S3={s3_size}")
+                    else:
+                        logger.info(f"[audio.generate] session_id={session_id} S3 upload verified: size={s3_size} bytes")
+                else:
+                    logger.warning(f"[audio.generate] session_id={session_id} Could not verify S3 upload size")
+                
                 # Use S3 URL instead of local path
                 final_file_path = s3_url
-                logger.info(f"Audio uploaded to S3: {s3_url}")
+                logger.info(f"[audio.generate] session_id={session_id} Audio uploaded to S3: {s3_url}")
                 
                 # Clean up local file after successful upload
                 try:
                     os.remove(audio_path)
-                    logger.info(f"Local file cleaned up: {audio_path}")
+                    logger.info(f"[audio.generate] Local file cleaned up: {audio_path}")
                 except Exception as e:
                     logger.warning(f"Failed to clean up local file: {e}")
             else:
-                logger.warning("S3 upload failed, using local path")
+                logger.warning(f"[audio.generate] session_id={session_id} S3 upload failed, using local path")
         
         # Store file path (S3 URL or local path) in database
         history_entry = models.AudioHistory(

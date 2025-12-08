@@ -86,6 +86,68 @@ class S3StorageService:
             logger.error(f"Unexpected error uploading to S3: {e}")
             return None
     
+    def get_file_size(self, s3_key_or_url: str) -> Optional[int]:
+        """
+        Get the size of an S3 object in bytes.
+        Works with both S3 keys (s3://bucket/key) and existing S3 URLs.
+        
+        Args:
+            s3_key_or_url: S3 key (s3://bucket/key) or existing S3 URL
+        
+        Returns:
+            File size in bytes if object exists, None otherwise
+        """
+        if not self.is_configured():
+            return None
+        
+        try:
+            # Extract S3 key from different formats (same logic as get_presigned_url)
+            key = None
+            if s3_key_or_url.startswith('s3://'):
+                # Format: s3://bucket/key
+                parts = s3_key_or_url[5:].split('/', 1)
+                if len(parts) == 2:
+                    bucket, key = parts
+                    if bucket != self.bucket_name:
+                        logger.warning(f"Bucket mismatch: {bucket} != {self.bucket_name}")
+                        return None
+                else:
+                    logger.error(f"Invalid S3 identifier format: {s3_key_or_url}")
+                    return None
+            elif 'amazonaws.com' in s3_key_or_url:
+                # Extract key from URL
+                if f'/{self.bucket_name}/' in s3_key_or_url:
+                    key = s3_key_or_url.split(f'/{self.bucket_name}/', 1)[1].split('?')[0]
+                elif f'{self.bucket_name}.s3.' in s3_key_or_url:
+                    key = s3_key_or_url.split(f'{self.bucket_name}.s3.', 1)[1]
+                    if '/' in key:
+                        key = key.split('/', 1)[1]
+                    else:
+                        key = ''
+                    key = key.split('?')[0]
+                else:
+                    logger.error(f"Could not extract key from URL: {s3_key_or_url}")
+                    return None
+            else:
+                # Assume it's already a key
+                key = s3_key_or_url
+            
+            if not key:
+                logger.error(f"Empty key extracted from: {s3_key_or_url}")
+                return None
+            
+            response = self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+            return response.get('ContentLength')
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                logger.warning(f"S3 object not found: {s3_key_or_url}")
+            else:
+                logger.error(f"Error checking S3 object size: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error getting S3 file size: {e}")
+            return None
+    
     def get_file_url(self, s3_key: str) -> Optional[str]:
         """
         Get public URL for an S3 object.
