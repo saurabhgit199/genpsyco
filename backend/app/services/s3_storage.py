@@ -270,6 +270,16 @@ class S3StorageService:
             
             logger.info(f"Generating presigned URL for bucket={self.bucket_name}, key={key}")
             
+            # Verify the object exists and get its size before generating presigned URL
+            try:
+                head_response = self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+                object_size = head_response.get('ContentLength', 0)
+                logger.info(f"S3 object exists: key={key}, size={object_size} bytes")
+            except ClientError as e:
+                error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+                logger.error(f"S3 object not found or inaccessible: key={key}, error={error_code}")
+                return None
+            
             # Generate presigned URL
             presigned_url = self.s3_client.generate_presigned_url(
                 'get_object',

@@ -216,6 +216,7 @@ async def play_audio(
         # Get presigned URL and fetch the audio from S3
         presigned_url = s3_storage.get_presigned_url(file_path)
         if presigned_url:
+            logger.info(f"[audio.play] session_id={session_id} Generated presigned URL (length={len(presigned_url)})")
             try:
                 # Fetch audio content fully from S3 to get Content-Length
                 # This is necessary for browser audio playback with blob URLs
@@ -223,6 +224,7 @@ async def play_audio(
                     s3_response = await client.get(presigned_url)
                     if s3_response.status_code >= 400:
                         logger.error(f"[audio.play] S3 returned status {s3_response.status_code}")
+                        logger.error(f"[audio.play] Response body: {s3_response.text[:500]}")
                         raise HTTPException(
                             status_code=status.HTTP_502_BAD_GATEWAY,
                             detail="Failed to fetch audio from storage"
@@ -232,13 +234,17 @@ async def play_audio(
                     logger.info(
                         f"[audio.play] session_id={session_id} S3 status={s3_response.status_code} "
                         f"resp_content_type={s3_response.headers.get('content-type')} "
-                        f"size={content_length}"
+                        f"content_length_header={s3_response.headers.get('content-length')} "
+                        f"actual_size={content_length}"
                     )
                     if content_length < 1024:
-                        logger.warning(
+                        logger.error(
                             f"[audio.play] session_id={session_id} very small audio payload ({content_length} bytes) "
-                            f"- playback may fail"
+                            f"- playback may fail. Response preview: {audio_content[:200]}"
                         )
+                        # Check if it's an XML error response
+                        if audio_content.startswith(b'<?xml') or audio_content.startswith(b'<Error'):
+                            logger.error(f"[audio.play] session_id={session_id} S3 returned XML error: {audio_content.decode('utf-8', errors='ignore')[:500]}")
                 
                 media_type, download_name = _detect_media_type(file_path)
                 
@@ -364,13 +370,15 @@ async def play_audio_history(
         # Get presigned URL and fetch the audio from S3
         presigned_url = s3_storage.get_presigned_url(entry.file_path)
         if presigned_url:
+            logger.info(f"[audio.play] history_id={history_id} Generated presigned URL (length={len(presigned_url)})")
             try:
                 # Fetch audio content fully from S3 to get Content-Length
                 # This is necessary for browser audio playback with blob URLs
                 async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
                     s3_response = await client.get(presigned_url)
                     if s3_response.status_code >= 400:
-                        logger.error(f"[audio.play] S3 returned status {s3_response.status_code}")
+                        logger.error(f"[audio.play] history_id={history_id} S3 returned status {s3_response.status_code}")
+                        logger.error(f"[audio.play] Response body: {s3_response.text[:500]}")
                         raise HTTPException(
                             status_code=status.HTTP_502_BAD_GATEWAY,
                             detail="Failed to fetch audio from storage"
@@ -380,13 +388,17 @@ async def play_audio_history(
                     logger.info(
                         f"[audio.play] history_id={history_id} S3 status={s3_response.status_code} "
                         f"resp_content_type={s3_response.headers.get('content-type')} "
-                        f"size={content_length}"
+                        f"content_length_header={s3_response.headers.get('content-length')} "
+                        f"actual_size={content_length}"
                     )
                     if content_length < 1024:
-                        logger.warning(
+                        logger.error(
                             f"[audio.play] history_id={history_id} very small audio payload ({content_length} bytes) "
-                            f"- playback may fail"
+                            f"- playback may fail. Response preview: {audio_content[:200]}"
                         )
+                        # Check if it's an XML error response
+                        if audio_content.startswith(b'<?xml') or audio_content.startswith(b'<Error'):
+                            logger.error(f"[audio.play] history_id={history_id} S3 returned XML error: {audio_content.decode('utf-8', errors='ignore')[:500]}")
                 
                 media_type, download_name = _detect_media_type(entry.file_path)
                 
