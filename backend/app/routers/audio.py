@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Literal
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 import logging
@@ -187,39 +187,53 @@ async def play_audio(
     
     # Check if it's an S3 URL or S3 identifier
     if s3_storage.is_s3_url(file_path):
-        logger.info(f"[audio.play] session_id={session_id} file_path={file_path} - Using StreamingResponse (new code)")
-        # Get presigned URL and stream the audio through backend
+        logger.info(f"[audio.play] session_id={session_id} file_path={file_path} - Fetching from S3")
+        # Get presigned URL and fetch the audio from S3
         presigned_url = s3_storage.get_presigned_url(file_path)
         if presigned_url:
             try:
-                # Stream audio from S3 and proxy it to the client
-                async def stream_audio():
-                    async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
-                        async with client.stream('GET', presigned_url) as response:
-                            # Check status after redirects are followed
-                            if response.status_code >= 400:
-                                response.raise_for_status()
-                            async for chunk in response.aiter_bytes():
-                                yield chunk
+                # Fetch audio content fully from S3 to get Content-Length
+                # This is necessary for browser audio playback with blob URLs
+                async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
+                    s3_response = await client.get(presigned_url)
+                    if s3_response.status_code >= 400:
+                        logger.error(f"[audio.play] S3 returned status {s3_response.status_code}")
+                        raise HTTPException(
+                            status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail="Failed to fetch audio from storage"
+                        )
+                    
+                    audio_content = s3_response.content
+                    content_length = len(audio_content)
                 
                 media_type, download_name = _detect_media_type(file_path)
                 
-                logger.info(f"[audio.play] session_id={session_id} Streaming from S3")
-                return StreamingResponse(
-                    stream_audio(),
+                logger.info(f"[audio.play] session_id={session_id} Serving from S3, size={content_length}, type={media_type}")
+                return Response(
+                    content=audio_content,
                     media_type=media_type,
                     headers={
                         "Content-Disposition": f'inline; filename="{download_name}"',
-                        "Cache-Control": "public, max-age=3600"
+                        "Content-Length": str(content_length),
+                        "Cache-Control": "public, max-age=3600",
+                        "Accept-Ranges": "bytes"
                     }
                 )
+            except httpx.HTTPError as e:
+                logger.error(f"[audio.play] session_id={session_id} Error fetching from S3: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Failed to fetch audio: {str(e)}"
+                )
             except Exception as e:
-                logger.error(f"[audio.play] session_id={session_id} Error streaming from S3: {e}")
+                logger.error(f"[audio.play] session_id={session_id} Error: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to stream audio: {str(e)}"
+                    detail=f"Failed to serve audio: {str(e)}"
                 )
         else:
             logger.error(f"[audio.play] session_id={session_id} Failed to generate presigned URL for: {file_path}")
@@ -312,39 +326,53 @@ async def play_audio_history(
 
     # Check if it's an S3 URL or S3 identifier
     if s3_storage.is_s3_url(entry.file_path):
-        logger.info(f"[audio.play] history_id={history_id} file_path={entry.file_path} - Using StreamingResponse (new code)")
-        # Get presigned URL and stream the audio through backend
+        logger.info(f"[audio.play] history_id={history_id} file_path={entry.file_path} - Fetching from S3")
+        # Get presigned URL and fetch the audio from S3
         presigned_url = s3_storage.get_presigned_url(entry.file_path)
         if presigned_url:
             try:
-                # Stream audio from S3 and proxy it to the client
-                async def stream_audio():
-                    async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
-                        async with client.stream('GET', presigned_url) as response:
-                            # Check status after redirects are followed
-                            if response.status_code >= 400:
-                                response.raise_for_status()
-                            async for chunk in response.aiter_bytes():
-                                yield chunk
+                # Fetch audio content fully from S3 to get Content-Length
+                # This is necessary for browser audio playback with blob URLs
+                async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
+                    s3_response = await client.get(presigned_url)
+                    if s3_response.status_code >= 400:
+                        logger.error(f"[audio.play] S3 returned status {s3_response.status_code}")
+                        raise HTTPException(
+                            status_code=status.HTTP_502_BAD_GATEWAY,
+                            detail="Failed to fetch audio from storage"
+                        )
+                    
+                    audio_content = s3_response.content
+                    content_length = len(audio_content)
                 
                 media_type, download_name = _detect_media_type(entry.file_path)
                 
-                logger.info(f"[audio.play] history_id={history_id} session_id={session.id} provider={entry.provider} Streaming from S3")
-                return StreamingResponse(
-                    stream_audio(),
+                logger.info(f"[audio.play] history_id={history_id} session_id={session.id} provider={entry.provider} Serving from S3, size={content_length}, type={media_type}")
+                return Response(
+                    content=audio_content,
                     media_type=media_type,
                     headers={
                         "Content-Disposition": f'inline; filename="{download_name}"',
-                        "Cache-Control": "public, max-age=3600"
+                        "Content-Length": str(content_length),
+                        "Cache-Control": "public, max-age=3600",
+                        "Accept-Ranges": "bytes"
                     }
                 )
+            except httpx.HTTPError as e:
+                logger.error(f"[audio.play] history_id={history_id} Error fetching from S3: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Failed to fetch audio: {str(e)}"
+                )
             except Exception as e:
-                logger.error(f"[audio.play] history_id={history_id} Error streaming from S3: {e}")
+                logger.error(f"[audio.play] history_id={history_id} Error: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to stream audio: {str(e)}"
+                    detail=f"Failed to serve audio: {str(e)}"
                 )
         else:
             logger.error(f"[audio.play] history_id={history_id} Failed to generate presigned URL for: {entry.file_path}")

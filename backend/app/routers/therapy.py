@@ -119,7 +119,7 @@ def get_my_sessions(
         sessions = _session_query(db).filter(
             models.TherapySession.psychologist_id == current_user.id
         ).order_by(models.TherapySession.created_at.desc()).all()
-
+    
     return [_sort_audio_history(s) for s in sessions]
 
 @router.get("/pending", response_model=List[schemas.TherapySessionResponse])

@@ -53,11 +53,19 @@ export const AuthProvider = ({ children }) => {
         },
       })
 
-      const { access_token } = response.data
+      const { access_token, user } = response.data
       setToken(access_token)
       localStorage.setItem('token', access_token)
       axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
-      await fetchUser()
+      
+      // Use user data from login response instead of making another API call
+      if (user && user.id) {
+        setUser(user)
+        setLoading(false)
+      } else {
+        // Fallback to fetchUser if user data not in response (backward compatibility)
+        await fetchUser()
+      }
       return response.data
     } catch (error) {
       // Log error details for debugging

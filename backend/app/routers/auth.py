@@ -63,7 +63,7 @@ def register(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
 
     return db_user
 
-@router.post("/login", response_model=schemas.Token)
+@router.post("/login", response_model=schemas.TokenWithUser)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     logger.info(f"Login attempt for username: {form_data.username}")
     try:
@@ -80,7 +80,22 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         access_token = create_access_token(
             data={"sub": user.username}, expires_delta=access_token_expires
         )
-        return {"access_token": access_token, "token_type": "bearer"}
+        # Convert user to response model (Pydantic v2)
+        try:
+            user_response = schemas.UserResponse.model_validate(user)
+            return schemas.TokenWithUser(
+                access_token=access_token,
+                token_type="bearer",
+                user=user_response
+            )
+        except Exception as validation_error:
+            logger.error(f"Error validating user response: {validation_error}", exc_info=True)
+            # Fallback to basic token response if user validation fails
+            return {
+                "access_token": access_token,
+                "token_type": "bearer",
+                "user": None
+            }
     except HTTPException:
         raise
     except Exception as e:

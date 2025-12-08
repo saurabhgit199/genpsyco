@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import VoiceChat from './VoiceChat';
 import '../App.css';
 
 const CounselorChat = ({ sessionId, onTherapyGenerated }) => {
@@ -9,6 +10,7 @@ const CounselorChat = ({ sessionId, onTherapyGenerated }) => {
     const [therapyGenerated, setTherapyGenerated] = useState(false);
     const [therapyGenerating, setTherapyGenerating] = useState(false);
     const [typingIndicator, setTypingIndicator] = useState(false);
+    const [showVoiceChat, setShowVoiceChat] = useState(false);
     const messagesEndRef = useRef(null);
     const statusCheckInterval = useRef(null);
 
@@ -262,6 +264,25 @@ const CounselorChat = ({ sessionId, onTherapyGenerated }) => {
                     onBlur={(e) => e.target.style.borderColor = 'var(--gray-200)'}
                 />
                 <button
+                    type="button"
+                    onClick={() => setShowVoiceChat(!showVoiceChat)}
+                    style={{
+                        padding: '0.75rem 1rem',
+                        backgroundColor: showVoiceChat ? 'var(--primary-600)' : 'var(--gray-200)',
+                        color: showVoiceChat ? 'white' : 'var(--gray-700)',
+                        border: 'none',
+                        borderRadius: 'var(--radius-md)',
+                        cursor: 'pointer',
+                        fontSize: '1.2rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}
+                    title={showVoiceChat ? 'Close Voice Chat' : 'Start Voice Chat'}
+                >
+                    🎤
+                </button>
+                <button
                     type="submit"
                     disabled={loading || !inputMessage.trim()}
                     className="btn btn-primary"
@@ -273,6 +294,12 @@ const CounselorChat = ({ sessionId, onTherapyGenerated }) => {
                     {loading ? 'Sending...' : 'Send'}
                 </button>
             </form>
+            {showVoiceChat && (
+                <VoiceChat
+                    sessionId={sessionId}
+                    onClose={() => setShowVoiceChat(false)}
+                />
+            )}
         </div>
     );
 };
