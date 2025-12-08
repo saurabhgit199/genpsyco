@@ -202,9 +202,18 @@ async def play_audio(
                             status_code=status.HTTP_502_BAD_GATEWAY,
                             detail="Failed to fetch audio from storage"
                         )
-                    
                     audio_content = s3_response.content
                     content_length = len(audio_content)
+                    logger.info(
+                        f"[audio.play] session_id={session_id} S3 status={s3_response.status_code} "
+                        f"resp_content_type={s3_response.headers.get('content-type')} "
+                        f"size={content_length}"
+                    )
+                    if content_length < 1024:
+                        logger.warning(
+                            f"[audio.play] session_id={session_id} very small audio payload ({content_length} bytes) "
+                            f"- playback may fail"
+                        )
                 
                 media_type, download_name = _detect_media_type(file_path)
                 
@@ -341,9 +350,18 @@ async def play_audio_history(
                             status_code=status.HTTP_502_BAD_GATEWAY,
                             detail="Failed to fetch audio from storage"
                         )
-                    
                     audio_content = s3_response.content
                     content_length = len(audio_content)
+                    logger.info(
+                        f"[audio.play] history_id={history_id} S3 status={s3_response.status_code} "
+                        f"resp_content_type={s3_response.headers.get('content-type')} "
+                        f"size={content_length}"
+                    )
+                    if content_length < 1024:
+                        logger.warning(
+                            f"[audio.play] history_id={history_id} very small audio payload ({content_length} bytes) "
+                            f"- playback may fail"
+                        )
                 
                 media_type, download_name = _detect_media_type(entry.file_path)
                 
