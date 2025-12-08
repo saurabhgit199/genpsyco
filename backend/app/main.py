@@ -19,7 +19,7 @@ except ImportError as e:
 
 # Create database tables (with error handling)
 try:
-Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
     logger.info("Database tables created successfully")
 except Exception as e:
     logger.error(f"Failed to create database tables: {e}")
