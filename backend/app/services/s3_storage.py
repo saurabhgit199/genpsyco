@@ -25,12 +25,23 @@ class S3StorageService:
             settings.aws_secret_access_key and 
             settings.aws_s3_bucket_name):
             try:
-                self.s3_client = boto3.client(
-                    's3',
-                    aws_access_key_id=settings.aws_access_key_id,
-                    aws_secret_access_key=settings.aws_secret_access_key,
-                    region_name=settings.aws_s3_region
-                )
+                # Check if using S3 Access Point (indicated by -s3alias suffix or similar)
+                # Access Points require a specific endpoint URL
+                is_access_point = '-s3alias' in settings.aws_s3_bucket_name or settings.aws_s3_bucket_name.endswith('-s3alias')
+                
+                client_config = {
+                    'aws_access_key_id': settings.aws_access_key_id,
+                    'aws_secret_access_key': settings.aws_secret_access_key,
+                    'region_name': settings.aws_s3_region
+                }
+                
+                # For S3 Access Points, use the access point endpoint
+                if is_access_point:
+                    endpoint_url = f"https://{settings.aws_s3_bucket_name}.s3.{settings.aws_s3_region}.amazonaws.com"
+                    client_config['endpoint_url'] = endpoint_url
+                    logger.info(f"S3 Access Point detected, using endpoint: {endpoint_url}")
+                
+                self.s3_client = boto3.client('s3', **client_config)
                 logger.info(f"S3 storage initialized for bucket: {self.bucket_name}")
             except Exception as e:
                 logger.error(f"Failed to initialize S3 client: {e}")
