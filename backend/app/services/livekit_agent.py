@@ -3,11 +3,16 @@ LiveKit Agent Service - Handles voice interactions using Gemini.
 """
 import asyncio
 import logging
+import os
 from livekit.agents import JobContext, llm
 from livekit.agents.voice import Agent
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Ensure Gemini API key is available as environment variable for plugins
+if settings.gemini_api_key and not os.getenv("GEMINI_API_KEY"):
+    os.environ["GEMINI_API_KEY"] = settings.gemini_api_key
 
 
 async def entrypoint(ctx: JobContext):
@@ -58,7 +63,9 @@ Keep responses conversational, warm, and professional. Speak naturally as if in 
 
 
 if __name__ == "__main__":
-    # Configure worker options
+    # This is handled by run_livekit_agent.py
+    # Keeping for backward compatibility
+    from livekit.agents import WorkerOptions, cli
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
