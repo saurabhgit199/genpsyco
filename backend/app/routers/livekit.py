@@ -11,9 +11,12 @@ logger = logging.getLogger(__name__)
 try:
     from livekit import api, rtc
     LIVEKIT_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     LIVEKIT_AVAILABLE = False
-    logger.warning("LiveKit package not installed. LiveKit features will be unavailable.")
+    logger.warning(f"LiveKit package not installed: {e}. LiveKit features will be unavailable.")
+    # Create dummy classes to prevent import errors
+    api = None
+    rtc = None
 
 router = APIRouter()
 
@@ -53,7 +56,7 @@ def generate_token(
         # Create access token
         token = api.AccessToken(settings.livekit_api_key, settings.livekit_api_secret) \
             .with_identity(str(current_user.id)) \
-            .with_name(current_user.full_name) \
+            .with_name(current_user.full_name or f"User {current_user.id}") \
             .with_grants(
                 api.VideoGrants(
                     room_join=True,
@@ -66,13 +69,15 @@ def generate_token(
         
         token_str = token.to_jwt()
         
+        logger.info(f"Generated LiveKit token for user {current_user.id}, room: {request.room_name}")
+        
         return TokenResponse(
             token=token_str,
             url=settings.livekit_url,
             room_name=request.room_name
         )
     except Exception as e:
-        logger.error(f"Error generating LiveKit token: {e}")
+        logger.error(f"Error generating LiveKit token: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate token: {str(e)}"
