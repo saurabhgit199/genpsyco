@@ -3,18 +3,8 @@ LiveKit Agent Service - Handles voice interactions using Gemini.
 """
 import asyncio
 import logging
-from typing import Annotated
-from livekit.agents import (
-    AutoSubscribe,
-    JobContext,
-    WorkerOptions,
-    cli,
-    llm,
-    tts,
-    stt,
-)
-from livekit.agents.pipeline import VoicePipelineAgent
-from livekit.plugins import gemini, openai
+from livekit.agents import JobContext, llm
+from livekit.agents.voice import Agent
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -26,23 +16,6 @@ async def entrypoint(ctx: JobContext):
     
     # Wait for participant to connect
     await ctx.wait_for_participant()
-    
-    # Initialize Gemini STT
-    stt_model = gemini.STT(
-        api_key=settings.gemini_api_key,
-    )
-    
-    # Initialize Gemini LLM
-    llm_model = gemini.LLM(
-        api_key=settings.gemini_api_key,
-        model=settings.gemini_model_id,
-    )
-    
-    # Initialize Gemini TTS
-    tts_model = gemini.TTS(
-        api_key=settings.gemini_api_key,
-        model=settings.gemini_tts_model_id,
-    )
     
     # Create the counselor system prompt
     counselor_prompt = """You are Dr. Sarah Chen, a licensed clinical psychologist with 15 years of experience in mental health counseling. You are conducting a professional therapy session.
@@ -57,12 +30,14 @@ Your therapeutic approach:
 
 Keep responses conversational, warm, and professional. Speak naturally as if in a real therapy session. Keep responses concise (2-3 sentences) for voice interactions."""
 
-    # Create agent with Gemini pipeline
-    agent = VoicePipelineAgent(
-        vad=stt_model.create_vad(),
-        stt=stt_model,
-        llm=llm_model,
-        tts=tts_model,
+    # Create agent with Gemini - using string model names for automatic plugin detection
+    # The new API will automatically use the appropriate plugins based on model names
+    agent = Agent(
+        instructions=counselor_prompt,
+        # Use Gemini models - the API will auto-detect and use the right plugins
+        stt="gemini",  # Auto-detects Gemini STT plugin
+        llm=f"gemini/{settings.gemini_model_id}",  # Use Gemini LLM
+        tts=f"gemini/{settings.gemini_tts_model_id}",  # Use Gemini TTS
         chat_ctx=llm.ChatContext().append(
             role="system",
             text=counselor_prompt,
