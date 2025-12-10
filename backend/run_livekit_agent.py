@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.services.livekit_agent import entrypoint
 from app.config import settings
-from livekit.agents import WorkerOptions, cli
+from livekit.agents.worker import WorkerOptions, AgentServer
 
 if __name__ == "__main__":
     if not settings.livekit_url or not settings.livekit_api_key or not settings.livekit_api_secret:
@@ -44,12 +44,13 @@ if __name__ == "__main__":
     print(f"LiveKit URL: {settings.livekit_url}")
     print(f"Gemini Model: {settings.gemini_model_id}")
     
-    cli.run_app(
-        WorkerOptions(
-            entrypoint_fnc=entrypoint,
-            api_key=settings.livekit_api_key,
-            api_secret=settings.livekit_api_secret,
-            ws_url=settings.livekit_url,
-        )
+    # Build server from WorkerOptions and run directly (avoids CLI missing command issue)
+    options = WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        api_key=settings.livekit_api_key,
+        api_secret=settings.livekit_api_secret,
+        ws_url=settings.livekit_url,
     )
+    server = AgentServer.from_server_options(options)
+    server.run(devmode=True)
 
