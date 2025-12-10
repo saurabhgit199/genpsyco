@@ -52,5 +52,8 @@ if __name__ == "__main__":
         ws_url=settings.livekit_url,
     )
     server = AgentServer.from_server_options(options)
-    server.run(devmode=True)
+
+    # run() is async; ensure we await it
+    import asyncio
+    asyncio.run(server.run(devmode=True))
 
