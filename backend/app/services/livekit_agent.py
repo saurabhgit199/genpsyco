@@ -18,8 +18,12 @@ async def entrypoint(ctx: JobContext):
     """Entrypoint for LiveKit agent jobs.""" 
     logger.info(f"Agent connected to room: {ctx.room.name}") 
  
-    # Wait for participant to connect 
-    await ctx.wait_for_participant() 
+    # Ensure the room is connected before waiting for participants
+    if not ctx.room.is_connected:
+        await ctx.connect()
+
+    # Wait for participant to connect
+    await ctx.wait_for_participant()
  
     # Create the counselor system prompt 
     counselor_prompt = """You are Dr. Sarah Chen, a licensed clinical psychologist with 15 years of experience in mental health counseling. You are conducting a professional therapy session. 
